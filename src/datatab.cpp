@@ -38,8 +38,6 @@ DataTab::DataTab(QByteArray* RxBuf, QVector<Metadata>* RxMetadataBuf, QByteArray
 
     connect(ui->sendEdit, &QLineEdit::returnPressed, this, &DataTab::on_sendButton_clicked);
     connect(repeatTimer, &QTimer::timeout, this, &DataTab::on_sendButton_clicked);
-    connect(RxSlider, &QScrollBar::valueChanged, this, &DataTab::onRxSliderValueChanged);
-    connect(RxSlider, &QScrollBar::sliderMoved, this, &DataTab::onRxSliderMoved);
 }
 
 DataTab::~DataTab()
@@ -183,7 +181,7 @@ void DataTab::loadPreference()
     // setChecked() will trigger on_xxx_stateChanged(), but on_xxx_clicked() will not be triggered
     settings->beginGroup("SerialTest_Data");
     ui->receivedHexBox->setChecked(settings->value("Recv_Hex", false).toBool());
-    ui->receivedLatestBox->setChecked(settings->value("Recv_Latest", false).toBool());
+    ui->receivedLatestBox->setChecked(settings->value("Recv_Latest", true).toBool());
     ui->receivedTimestampBox->setChecked(settings->value("Recv_Timestamp", false).toBool());
     ui->receivedRealtimeBox->setChecked(settings->value("Recv_Realtime", true).toBool());
     ui->sendedHexBox->setChecked(settings->value("Send_Hex", false).toBool());
@@ -197,6 +195,7 @@ void DataTab::loadPreference()
     ui->data_flowDTRBox->setChecked(settings->value("Flow_DTR", false).toBool());
     ui->data_flowRTSBox->setChecked(settings->value("Flow_RTS", false).toBool());
     ui->data_encodingNameBox->setCurrentText(settings->value("Encoding_Name", "UTF-8").toString());
+    ui->sendEdit->setText(settings->value("Data", "").toString());
     settings->endGroup();
     on_data_encodingSetButton_clicked();
 }
@@ -205,18 +204,6 @@ void DataTab::on_data_suffixTypeBox_currentIndexChanged(int index)
 {
     ui->data_suffixEdit->setVisible(index != 2 && index != 3);
     ui->data_suffixEdit->setPlaceholderText(tr("Suffix") + ((index == 1) ? "(Hex)" : ""));
-}
-void DataTab::onRxSliderValueChanged(int value)
-{
-    // qDebug() << "valueChanged" << value;
-    currRxSliderPos = value;
-}
-
-void DataTab::onRxSliderMoved(int value)
-{
-    // slider is moved by user
-    // qDebug() << "sliderMoved" << value;
-    userRequiredRxSliderPos = value;
 }
 
 void DataTab::on_sendedHexBox_stateChanged(int arg1)
@@ -239,6 +226,12 @@ void DataTab::on_receivedTimestampBox_stateChanged(int arg1)
 }
 
 void DataTab::on_receivedClearButton_clicked()
+{
+    clearRxData();
+    emit clearGraph();
+}
+
+void DataTab::clearRxData()
 {
     lastReceivedByte = '\0'; // anything but '\r'
     emit clearReceivedData();
@@ -433,10 +426,21 @@ void DataTab::onConnEstablished()
         // ui->data_flowDTRBox->setChecked(m_connection->SP_isDataTerminalReady());
 
         // sync states from UI to serial
+        //
+        // Some devices, such as Quectel EC200U/EC600U/EG912U, may not support getting or setting the DTR/RTS signals.
+        // When attempting these operations on such devices, they may report QSerialPort::UnknownError instead of QSerialPort::UnsupportedOperationError.
+        // This can cause the Connection class to close the device unexpectedly.
+        // These errors should be ignored when syncing the DTR/RTS state with the device.
+
+        const auto oldErrorList = m_connection->SP_getIgnoredErrorList();
+        auto errorList = oldErrorList;
+        errorList.append(QSerialPort::UnknownError);
+        m_connection->SP_setIgnoredErrorList(errorList);
         if(ui->data_flowDTRBox->isChecked() != m_connection->SP_isDataTerminalReady())
             on_data_flowDTRBox_clicked(ui->data_flowDTRBox->isChecked());
         if(ui->data_flowRTSBox->isChecked() != m_connection->SP_isRequestToSend())
             on_data_flowRTSBox_clicked(ui->data_flowRTSBox->isChecked());
+        m_connection->SP_setIgnoredErrorList(oldErrorList);
     }
 }
 
@@ -476,57 +480,51 @@ void DataTab::appendSendedData(const QByteArray& data)
 // void MainWindow::syncEditWithData()
 void DataTab::appendReceivedData(const QByteArray &data, const QVector<Metadata>& metadata)
 {
-    int cursorPos;
+    // Record cursor position and selection
+    QTextCursor textCursor = ui->receivedEdit->textCursor();
     int sliderPos;
 
-    if(ui->receivedLatestBox->isChecked())
+    if(!ui->receivedLatestBox->isChecked())
     {
-        userRequiredRxSliderPos = RxSlider->maximum();
-        RxSlider->setSliderPosition(RxSlider->maximum());
-    }
-    else
-    {
-        userRequiredRxSliderPos = currRxSliderPos;
-        RxSlider->setSliderPosition(currRxSliderPos);
+        // Record slider position
+        sliderPos = RxSlider->sliderPosition();
     }
 
-    sliderPos = RxSlider->sliderPosition();
-
-    cursorPos = ui->receivedEdit->textCursor().position();
     ui->receivedEdit->moveCursor(QTextCursor::End);
     if(isReceivedDataHex)
     {
+        qint64 offset = 0;
+        QByteArray dataItem;
         if(RxTimestampEnabled)
         {
-            qint64 offset = metadata[0].pos;
             for(const Metadata& item : metadata)
             {
-                QByteArray dataItem = data.mid(item.pos - offset, item.len);
+                dataItem = data.mid(offset, item.len);
                 offset += item.len;
-                ui->receivedEdit->appendPlainText(stringWithTimestamp(dataItem.toHex(' '), item.timestamp));
+                ui->receivedEdit->appendPlainText(stringWithTimestamp(dataItem.toHex(' ') + ' ', item.timestamp));
             }
         }
-        else
+
+        dataItem = data.mid(offset);
+        ui->receivedEdit->insertPlainText(dataItem.toHex(' ') + ' ');
+        RxHexCounter += dataItem.length();
+        // QPlainTextEdit is not good at handling long line
+        // Seperate for better realtime receiving response
+        if(RxHexCounter > 5000)
         {
-            ui->receivedEdit->insertPlainText(data.toHex(' ') + ' ');
-            RxHexCounter += data.length();
-            // QPlainTextEdit is not good at handling long line
-            // Seperate for better realtime receiving response
-            if(RxHexCounter > 5000)
-            {
-                ui->receivedEdit->insertPlainText("\n");
-                RxHexCounter = 0;
-            }
+            ui->receivedEdit->insertPlainText("\n");
+            RxHexCounter = 0;
         }
     }
     else
     {
+        qint64 offset = 0;
+        QByteArray dataItem;
         if(RxTimestampEnabled)
         {
-            qint64 offset = metadata[0].pos;
             for(const Metadata& item : metadata)
             {
-                QByteArray dataItem = data.mid(item.pos - offset, item.len);
+                dataItem = data.mid(offset, item.len);
                 offset += item.len;
                 if(lastReceivedByte == '\r' && !dataItem.isEmpty() && *dataItem.cbegin() == '\n')
                     ui->receivedEdit->appendPlainText(stringWithTimestamp(RxDecoder->toUnicode(dataItem.right(dataItem.size() - 1)), item.timestamp));
@@ -535,20 +533,28 @@ void DataTab::appendReceivedData(const QByteArray &data, const QVector<Metadata>
                 lastReceivedByte = *dataItem.crbegin();
             }
         }
+
+        dataItem = data.mid(offset);
+        // append, use QTextDecoder
+        // if \r and \n are received seperatedly, the rawReceivedData will be fine, but the receivedEdit will have one more empty line
+        // just ignore one of them
+        if(lastReceivedByte == '\r' && !dataItem.isEmpty() && *dataItem.cbegin() == '\n')
+            ui->receivedEdit->insertPlainText(RxDecoder->toUnicode(dataItem.right(dataItem.size() - 1)));
         else
-        {
-            // append, use QTextDecoder
-            // if \r and \n are received seperatedly, the rawReceivedData will be fine, but the receivedEdit will have one more empty line
-            // just ignore one of them
-            if(lastReceivedByte == '\r' && !data.isEmpty() && *data.cbegin() == '\n')
-                ui->receivedEdit->insertPlainText(RxDecoder->toUnicode(data.right(data.size() - 1)));
-            else
-                ui->receivedEdit->insertPlainText(RxDecoder->toUnicode(data));
-            lastReceivedByte = *data.crbegin();
-        }
+            ui->receivedEdit->insertPlainText(RxDecoder->toUnicode(dataItem));
+        lastReceivedByte = *dataItem.crbegin();
     }
-    ui->receivedEdit->textCursor().setPosition(cursorPos);
-    RxSlider->setSliderPosition(sliderPos);
+    ui->receivedEdit->setTextCursor(textCursor);
+    if(!ui->receivedLatestBox->isChecked())
+    {
+        // Restore slider position
+        RxSlider->setSliderPosition(sliderPos);
+    }
+    else
+    {
+        // Sometimes the slider position is a few lines above the maximum position
+        RxSlider->setSliderPosition(RxSlider->maximum());
+    }
 }
 
 void DataTab::on_data_flowDTRBox_clicked(bool checked)
@@ -612,6 +618,42 @@ void DataTab::showUpTabHelper(int tabID)
 inline QString DataTab::stringWithTimestamp(const QString& str, qint64 timestamp)
 {
     return ('[' + QDateTime::fromMSecsSinceEpoch(timestamp).toString(Qt::ISODateWithMs) + "] " + str);
+}
+
+void DataTab::onRecordDataChanged(bool enabled)
+{
+    if(enabled)
+    {
+        connect(ui->sendEdit, &QLineEdit::editingFinished, this, &DataTab::recordDataToBeSent);
+        recordDataToBeSent();
+    }
+    else
+    {
+        disconnect(ui->sendEdit, &QLineEdit::editingFinished, this, &DataTab::recordDataToBeSent);
+        settings->beginGroup("SerialTest_Data");
+        settings->remove("Data");
+        settings->endGroup();
+    }
+}
+
+void DataTab::onClearBehaviorChanged(bool clearBoth)
+{
+    acceptClearSignal = clearBoth;
+}
+
+void DataTab::onRxClearSignalReceived()
+{
+    if(acceptClearSignal)
+    {
+        on_receivedClearButton_clicked();
+    }
+}
+
+void DataTab::recordDataToBeSent()
+{
+    settings->beginGroup("SerialTest_Data");
+    settings->setValue("Data", ui->sendEdit->text());
+    settings->endGroup();
 }
 
 #ifdef Q_OS_ANDROID

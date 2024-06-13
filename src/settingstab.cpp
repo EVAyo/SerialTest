@@ -28,13 +28,14 @@ SettingsTab::SettingsTab(QWidget *parent) :
     ui->Android_forceLandscapeBox->hide();
     ui->Android_dockBox->hide();
     ui->Android_HWSerialBox->hide();
-    ui->generalGrpBox->hide(); // if the generalGrpBox has more than one items, delete this line.
     connect(ui->Opacity_slider, &QSlider::valueChanged, ui->Opacity_Box, &QSpinBox::setValue);
 #endif
 
     ui->Lang_nameBox->addItem(tr("(System)"), "(sys)");
     ui->Lang_nameBox->addItem(tr("Simplified Chinese"), "zh_CN");
+    ui->Lang_nameBox->addItem(tr("Traditional Chinese"), "zh_TW");
     ui->Lang_nameBox->addItem(tr("English"), "en");
+    ui->Lang_nameBox->addItem(tr("Norwegian"), "nb_NO");
     ui->Lang_nameBox->addItem(tr("(External File)"), "(ext)");
 
     ui->Theme_nameBox->addItem(tr("(None)"), "(none)");
@@ -43,8 +44,6 @@ SettingsTab::SettingsTab(QWidget *parent) :
 
     // APP_VERSION is defined in the .pro file
     ui->versionLabel->setText(APP_VERSION);
-
-    QScroller::grabGesture(ui->scrollArea);
 }
 
 SettingsTab::~SettingsTab()
@@ -96,8 +95,12 @@ void SettingsTab::initSettings()
     connect(ui->Android_fullScreenBox, &QCheckBox::clicked, this, &SettingsTab::savePreference);
     connect(ui->Android_forceLandscapeBox, &QCheckBox::clicked, this, &SettingsTab::savePreference);
     connect(ui->Android_dockBox, &QCheckBox::clicked, this, &SettingsTab::savePreference);
+    connect(ui->General_touchScrollBox, &QCheckBox::clicked, this, &SettingsTab::savePreference);
     // Android_HWSerialBox will handle the preference itself.
     connect(ui->Opacity_Box, QOverload<int>::of(&QSpinBox::valueChanged), this, &SettingsTab::savePreference);
+    connect(ui->Data_recordDataBox, &QCheckBox::clicked, this, &SettingsTab::savePreference);
+    connect(ui->Data_mergeTimestampBox, &QCheckBox::clicked, this, &SettingsTab::savePreference);
+    connect(ui->Data_mergeTimestampIntervalBox, QOverload<int>::of(&QSpinBox::valueChanged), this, &SettingsTab::savePreference);
 }
 
 
@@ -163,6 +166,12 @@ void SettingsTab::on_Android_fullScreenBox_clicked()
     emit fullScreenStateChanged(ui->Android_fullScreenBox->isChecked());
 }
 
+
+void SettingsTab::on_General_touchScrollBox_clicked()
+{
+    emit TouchScrollStateChanged(ui->General_touchScrollBox->isChecked());
+}
+
 void SettingsTab::savePreference()
 {
     if(m_settings->group() != "")
@@ -175,8 +184,14 @@ void SettingsTab::savePreference()
 #else
     m_settings->setValue("Opacity", ui->Opacity_Box->value());
 #endif
+    m_settings->setValue("TouchScroll", ui->General_touchScrollBox->isChecked());
     m_settings->endGroup();
     // Android_HWSerialBox will handle the preference itself.
+    m_settings->beginGroup("SerialTest_Data");
+    m_settings->setValue("RecordData", ui->Data_recordDataBox->isChecked());
+    m_settings->setValue("MergeTimestamp", ui->Data_mergeTimestampBox->isChecked());
+    m_settings->setValue("TimestampInterval", ui->Data_mergeTimestampIntervalBox->value());
+    m_settings->endGroup();
 }
 
 void SettingsTab::loadPreference()
@@ -190,7 +205,9 @@ void SettingsTab::loadPreference()
     ui->Android_fullScreenBox->setChecked(m_settings->value("Android_FullScreen", false).toBool());
     ui->Android_forceLandscapeBox->setChecked(m_settings->value("Android_ForceLandscape", true).toBool());
     ui->Android_dockBox->setChecked(m_settings->value("Android_Dock", false).toBool());
+    ui->General_touchScrollBox->setChecked(m_settings->value("TouchScroll", true).toBool());
     ui->Opacity_Box->setValue(m_settings->value("Opacity", 100).toInt());
+    ui->General_simultaneousClearBox->setChecked(m_settings->value("ClearBothRxDataAndGraph", false).toBool());
     int themeId = ui->Theme_nameBox->findData(m_settings->value("Theme_Name", "(none)").toString());
     ui->Theme_nameBox->setCurrentIndex((themeId == -1) ? 0 : themeId);
 
@@ -223,6 +240,11 @@ void SettingsTab::loadPreference()
     ui->Android_HWSerialBox->setChecked(m_settings->value("Android_HWSerial", false).toBool());
 #endif
     m_settings->endGroup();
+    m_settings->beginGroup("SerialTest_Data");
+    ui->Data_recordDataBox->setChecked(m_settings->value("RecordData", false).toBool());
+    ui->Data_mergeTimestampBox->setChecked(m_settings->value("MergeTimestamp", true).toBool());
+    ui->Data_mergeTimestampIntervalBox->setValue(m_settings->value("TimestampInterval", 10).toInt());
+    m_settings->endGroup();
 
     // Language is applied in main.cpp, not there.
     on_Lang_nameBox_currentIndexChanged(ui->Lang_nameBox->currentIndex());
@@ -233,6 +255,13 @@ void SettingsTab::loadPreference()
 #else
     on_Opacity_Box_valueChanged(ui->Opacity_Box->value());
 #endif
+    on_General_touchScrollBox_clicked();
+    on_Theme_setButton_clicked();
+    on_Data_recordDataBox_clicked();
+    on_Data_mergeTimestampBox_clicked();
+    on_Data_mergeTimestampIntervalBox_valueChanged(ui->Data_mergeTimestampIntervalBox->value());
+    on_General_simultaneousClearBox_clicked();
+
     if(fontValid)
         on_Font_setButton_clicked();
     if(dataFontValid)
@@ -338,8 +367,50 @@ void SettingsTab::on_Conf_exportButton_clicked()
 
 void SettingsTab::on_Theme_setButton_clicked()
 {
+    QString themeName = ui->Theme_nameBox->currentData().toString();
     m_settings->beginGroup("SerialTest");
-    m_settings->setValue("Theme_Name", ui->Theme_nameBox->currentData().toString());
+    m_settings->setValue("Theme_Name", themeName);
     m_settings->endGroup();
+    emit themeChanged(themeName);
 }
 
+
+void SettingsTab::on_Data_recordDataBox_clicked()
+{
+    emit recordDataChanged(ui->Data_recordDataBox->isChecked());
+}
+
+
+void SettingsTab::on_Data_mergeTimestampBox_clicked()
+{
+    emit mergeTimestampChanged(ui->Data_mergeTimestampBox->isChecked());
+}
+
+
+void SettingsTab::on_Data_mergeTimestampIntervalBox_valueChanged(int arg1)
+{
+    emit timestampIntervalChanged(arg1);
+}
+
+
+void SettingsTab::on_General_simultaneousClearBox_clicked()
+{
+    bool clearBoth = ui->General_simultaneousClearBox->isChecked();
+    m_settings->beginGroup("SerialTest");
+    m_settings->setValue("ClearBothRxDataAndGraph", clearBoth);
+    m_settings->endGroup();
+    emit clearBehaviorChanged(clearBoth);
+}
+
+
+void SettingsTab::setTouchScroll(bool enabled)
+{
+    if(enabled)
+    {
+        QScroller::grabGesture(ui->scrollArea);
+    }
+    else
+    {
+        QScroller::ungrabGesture(ui->scrollArea);
+    }
+}

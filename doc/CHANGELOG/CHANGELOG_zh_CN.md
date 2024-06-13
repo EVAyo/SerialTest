@@ -2,6 +2,35 @@
 
 [English](../../CHANGELOG.md)  
 
+## V0.3.5
++ 改进蓝牙BLE连接兼容性，支持WriteNoResponse操作 (commit 0e5c82ea6c)
++ 改进串口连接兼容性，在建立连接并尝试设置DTR/RTS信号时忽略设置失败的错误 (commit cae854bcdd)
++ 在MSVC编译器生成的程序中添加蓝牙支持 (commit 9760cccda8)
++ 支持自动保存窗口布局 (commit c88b47e1b0)
++ 支持配置触摸滚动手势 (commit fda6389c31)
++ 将状态栏中的"√"(U+221A)替换为"OK"以确保不同平台上的显示效果一致 (commit 574360343e)
++ 数据面板: 在新增已接收数据时保持已选中状态不被清除 (commit 86508ff76b)
++ 修复若干BUG
+
+## V0.3.4
++ Android: 使用自适应启动器图标 (commit da9f2caaf1)
+
+## V0.3.3
++ 支持在蓝牙客户端模式中指定目标服务UUID (commit 1bd23bf4e0)
++ 支持在Android端显示IPv6地址 (commit 03a0e7938c)
++ 支持记住数据界面中的待发送数据 (commit 00eb0e2e36)
++ 支持同时清除接收到的数据和图表 (commit a4779028d2)
++ 改进Android上的权限请求过程
++ 添加单独绘制点的功能 (commit daf34607c9)
++ 修复接收带时间戳的十六进制数据时缺少分隔符的问题 (commit 00eb0e2e36)
+
+## V0.3.2
++ 修复控制面板中的2处BUG  
++ 修复时间戳中的一处错误  
++ 支持不重启App直接切换主题  
++ 添加合并时间戳的功能（基于超时的分包）  
++ Android: 支持分享文件到SerialTest并发送(需使用Qt 5.15.10或更高版本编译)  
+
 ## V0.3.1
 + 修复一个编译错误 (commit 9e9cdc1837)
 

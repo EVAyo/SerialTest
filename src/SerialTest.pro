@@ -6,7 +6,16 @@ android {
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
-CONFIG += c++11
+win32-msvc*: {
+    # For Bluetooth LE in WinRT
+    CONFIG += c++17
+    SOURCES += winrtbluetooth.cpp
+    HEADERS += winrtbluetooth.h
+    LIBS += -lwindowsapp
+} else {
+    CONFIG += c++11
+}
+
 
 # The following define makes your compiler emit warnings if you use
 # any Qt feature that has been marked deprecated (the exact warnings
@@ -73,9 +82,12 @@ FORMS += \
     ui/plottab.ui
 
 TRANSLATIONS += \
-    i18n/SerialTest_zh_CN.ts
+    i18n/SerialTest_zh_CN.ts \
+    i18n/SerialTest_zh_TW.ts \
+    i18n/SerialTest_nb_NO.ts
 
 RC_ICONS = icon/icon.ico
+ICON = icon/icon.icns
 
 # Rules for deployment.
 qnx {
@@ -91,7 +103,7 @@ qnx {
 }
 
 # Remember to change version in AndroidManifest.xml
-VERSION = 0.3.1
+VERSION = 0.3.5
 QMAKE_TARGET_PRODUCT = "SerialTest"
 QMAKE_TARGET_DESCRIPTION = "SerialTest"
 QMAKE_TARGET_COMPANY = "wh201906"

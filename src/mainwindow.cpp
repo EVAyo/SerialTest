@@ -14,6 +14,8 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    // might not be empty(specified by -stylesheet option)
+    m_appDefaultQss = qApp->styleSheet();
     contextMenu = new QMenu();
 
     IOConnection = new Connection();
@@ -64,6 +66,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     plotTab = new PlotTab();
     connect(dataTab, &DataTab::setPlotDecoder, plotTab, &PlotTab::setDecoder);
+    connect(dataTab, &DataTab::clearGraph, plotTab, &PlotTab::onClearSignalReceived);
+    connect(plotTab, &PlotTab::clearRxData, dataTab, &DataTab::onRxClearSignalReceived);
     ui->funcTab->insertTab(2, plotTab, tr("Plot"));
 
     ctrlTab = new CtrlTab();
@@ -77,9 +81,19 @@ MainWindow::MainWindow(QWidget *parent)
     ui->funcTab->insertTab(4, fileTab, tr("File"));
 
     settingsTab = new SettingsTab();
+    connect(settingsTab, &SettingsTab::themeChanged, this, &MainWindow::onThemeChanged);
     connect(settingsTab, &SettingsTab::opacityChanged, this, &MainWindow::onOpacityChanged); // not a slot function, but works fine.
     connect(settingsTab, &SettingsTab::fullScreenStateChanged, this, &MainWindow::setFullScreen);
+    connect(settingsTab, &SettingsTab::TouchScrollStateChanged, deviceTab, &DeviceTab::setTouchScroll);
+    connect(settingsTab, &SettingsTab::TouchScrollStateChanged, ctrlTab, &CtrlTab::setTouchScroll);
+    connect(settingsTab, &SettingsTab::TouchScrollStateChanged, settingsTab, &SettingsTab::setTouchScroll);
     connect(settingsTab, &SettingsTab::updateAvailableDeviceTypes, deviceTab, &DeviceTab::getAvailableTypes);
+    connect(settingsTab, &SettingsTab::themeChanged, plotTab, &PlotTab::onThemeChanged);
+    connect(settingsTab, &SettingsTab::recordDataChanged, dataTab, &DataTab::onRecordDataChanged);
+    connect(settingsTab, &SettingsTab::mergeTimestampChanged, this, &MainWindow::onMergeTimestampChanged);
+    connect(settingsTab, &SettingsTab::timestampIntervalChanged, this, &MainWindow::onTimestampIntervalChanged);
+    connect(settingsTab, &SettingsTab::clearBehaviorChanged, dataTab, &DataTab::onClearBehaviorChanged);
+    connect(settingsTab, &SettingsTab::clearBehaviorChanged, plotTab, &PlotTab::onClearBehaviorChanged);
     ui->funcTab->insertTab(5, settingsTab, tr("Settings"));
 
     deviceTab->getAvailableTypes(true);
@@ -169,6 +183,15 @@ void MainWindow::keyReleaseEvent(QKeyEvent* e)
         QMainWindow::keyReleaseEvent(e);
 }
 
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    Q_UNUSED(event);
+    const QString windowStateData = QString::fromLatin1(saveState().toBase64());
+    settings->beginGroup("SerialTest");
+    settings->setValue("WindowState", windowStateData);
+    settings->endGroup();
+}
+
 void MainWindow::onStateButtonClicked()
 {
     if(IOConnection->state() != Connection::Unconnected)
@@ -205,7 +228,9 @@ void MainWindow::initUI()
     bool dockEnabled = settings->value("Android_Dock", false).toBool();
     settings->endGroup();
     if(dockEnabled)
+    {
         dockInit();
+    }
 #else
     onTopBox = new QCheckBox(tr("On Top"));
     connect(onTopBox, &QCheckBox::clicked, this, &MainWindow::onTopBoxClicked);
@@ -323,7 +348,7 @@ void MainWindow::updateStatusBar()
     connArgsLabel->setText(connArgsText);
     Connection::State currState = IOConnection->state();
     if(currState == Connection::Connected)
-        stateButton->setText(tr("State") + ": √");
+        stateButton->setText(tr("State") + ": OK");
     else if(currState == Connection::Bound || currState == Connection::Connecting)
         stateButton->setText(tr("State") + ": ...");
     else
@@ -471,13 +496,20 @@ void MainWindow::readData()
     QByteArray newData = IOConnection->readAll();
     if(newData.isEmpty())
         return;
+
     Metadata metadata(rawReceivedData.length(), newData.length(), QDateTime::currentMSecsSinceEpoch());
-    RxMetadata.append(metadata);
+    if(m_mergeTimestamp && !RxMetadata.isEmpty() && metadata.timestamp - RxMetadata.last().timestamp < m_timestampInterval)
+        RxMetadata.last().len += metadata.len;
+    else
+    {
+        RxMetadata.append(metadata);
+        RxUIMetadataBuf += metadata;
+    }
+
     rawReceivedData += newData;
     m_RxCount += newData.length();
     updateRxTxLen(true, false);
     RxUIBuf += newData;
-    RxUIMetadataBuf += metadata;
     QApplication::processEvents();
 }
 
@@ -532,6 +564,30 @@ void MainWindow::onOpacityChanged(qreal value)
     }
 }
 
+void MainWindow::onThemeChanged(const QString& themeName)
+{
+    QFile themeFile;
+    QTextStream themeStream;
+    QString qssString = qApp->styleSheet(); // default behavior
+    if(themeName == "(none)")
+        qssString = m_appDefaultQss;
+    else if(themeName == "qdss_dark")
+    {
+        themeFile.setFileName(":/qdarkstyle/dark/darkstyle.qss");
+        themeFile.open(QFile::ReadOnly | QFile::Text);
+        themeStream.setDevice(&themeFile);
+        qssString = themeStream.readAll();
+    }
+    else if(themeName == "qdss_light")
+    {
+        themeFile.setFileName(":/qdarkstyle/light/lightstyle.qss");
+        themeFile.open(QFile::ReadOnly | QFile::Text);
+        themeStream.setDevice(&themeFile);
+        qssString = themeStream.readAll();
+    }
+    qApp->setStyleSheet(qssString);
+}
+
 void MainWindow::dockInit()
 {
     setDockNestingEnabled(true);
@@ -547,6 +603,8 @@ void MainWindow::dockInit()
         dock->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         widget = ui->funcTab->widget(0);
         dock->setWidget(widget);
+        // For saveState()/restoreState()
+        dock->setObjectName(widget->objectName() + "DockWidget");
         connect(dock, &QDockWidget::topLevelChanged, this, &MainWindow::onDockTopLevelChanged);
         dock->installEventFilter(this);
         addDockWidget(Qt::BottomDockWidgetArea, dock);
@@ -558,6 +616,15 @@ void MainWindow::dockInit()
     ui->centralwidget->hide();
     dockList[0]->setVisible(true);
     dockList[0]->raise();
+
+    // Restore the geometry and the state of dock widgets
+    settings->beginGroup("SerialTest");
+    const QByteArray windowStateData = QByteArray::fromBase64(settings->value("WindowState", "").toString().toLatin1());
+    settings->endGroup();
+    if(!windowStateData.isEmpty())
+    {
+        restoreState(windowStateData);
+    }
 }
 
 
@@ -565,6 +632,16 @@ void MainWindow::onDockTopLevelChanged(bool topLevel)
 {
     if(topLevel) // some widget is floating now
         onOpacityChanged(windowOpacity());
+}
+
+void MainWindow::onMergeTimestampChanged(bool enabled)
+{
+    m_mergeTimestamp = enabled;
+}
+
+void MainWindow::onTimestampIntervalChanged(int interval)
+{
+    m_timestampInterval = interval;
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)

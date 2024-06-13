@@ -56,6 +56,7 @@ public slots:
     void Net_onDeleteButtonClicked();
     void syncUDPPreference();
     void syncTCPClientPreference();
+    void setTouchScroll(bool enabled);
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 private:
@@ -87,6 +88,8 @@ private:
 
     void initUI();
 #ifdef Q_OS_ANDROID
+    bool getPermission(const QString& permission);
+    void getRequiredPermission();
     void getBondedTarget(bool isBLE);
 #endif
     void setBTClientDiscoveryAgent(QBluetoothAddress adapterAddress = QBluetoothAddress());
@@ -134,6 +137,7 @@ private slots:
     void on_BTServer_deviceList_cellChanged(int row, int column);
     void on_Net_addrPortList_cellChanged(int row, int column);
     void on_BLEC_ServiceUUIDBox_currentTextChanged(const QString &arg1);
+    void on_BTClient_serviceUUIDBox_clicked();
 };
 
 #endif // DEVICETAB_H

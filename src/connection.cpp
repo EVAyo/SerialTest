@@ -250,8 +250,7 @@ void Connection::open()
     else if(m_type == BT_Client)
     {
         changeState(Connecting);
-        // TODO: add user defined UUID support
-        m_BTSocket->connectToService(m_currBTArgument.deviceAddress, QBluetoothUuid::SerialPort);
+        m_BTSocket->connectToService(m_currBTArgument.deviceAddress, m_currBTArgument.RxServiceUUID);
     }
     else if(m_type == BT_Server)
     {
@@ -606,8 +605,12 @@ void Connection::onErrorOccurred()
             m_errorStringList += m_serialPort->errorString();
         qDebug() << "SerialPort Error:" << error << m_serialPort->errorString();
 
+        if(m_SP_ignoredErrorList.contains(error))
+        {
+            qDebug() << error << "ignored";
+        }
         // no error
-        if(error == QSerialPort::NoError)
+        else if(error == QSerialPort::NoError)
             ;
         // serialport still works
         else if(error == QSerialPort::FramingError || error == QSerialPort::ParityError || error == QSerialPort::BreakConditionError || error == QSerialPort::UnsupportedOperationError || error == QSerialPort::TimeoutError || error == QSerialPort::ReadError || error == QSerialPort::WriteError)
@@ -782,9 +785,13 @@ qint64 Connection::write(const char *data, qint64 len)
     else if(m_type == BLE_Central)
     {
         if(m_BLERxTxMode == BLE_2S2C)
-            m_BLETxService->writeCharacteristic(m_BLETxCharacteristic, QByteArray::fromRawData(data, len));
+        {
+            m_BLETxService->writeCharacteristic(m_BLETxCharacteristic, QByteArray::fromRawData(data, len), m_BLETxWriteMode);
+        }
         else
-            m_BLERxTxService->writeCharacteristic(m_BLETxCharacteristic, QByteArray::fromRawData(data, len));
+        {
+            m_BLERxTxService->writeCharacteristic(m_BLETxCharacteristic, QByteArray::fromRawData(data, len), m_BLETxWriteMode);
+        }
         return len; // no feedback
     }
     else if(m_type == TCP_Client)
@@ -1105,6 +1112,16 @@ bool Connection::SP_setFlowControl(QSerialPort::FlowControl flowControl)
     return true;
 }
 
+void Connection::SP_setIgnoredErrorList(const QList<QSerialPort::SerialPortError> &errorList)
+{
+    m_SP_ignoredErrorList = errorList;
+}
+
+QList<QSerialPort::SerialPortError> Connection::SP_getIgnoredErrorList()
+{
+    return m_SP_ignoredErrorList;
+}
+
 QString Connection::BT_remoteName()
 {
     if(m_type == BT_Client && m_BTSocket != nullptr)
@@ -1121,6 +1138,8 @@ QBluetoothAddress Connection::BT_localAddress()
         return m_BTSocket->localAddress();
     else if(m_type == BT_Server && m_BTServer != nullptr)
         return m_BTServer->serverAddress();
+    else if(m_type == BLE_Central && m_BLEController != nullptr)
+        return m_BLEController->localAddress();
     return QBluetoothAddress();
 }
 
@@ -1249,11 +1268,18 @@ void Connection::BLEC_onServiceDetailDiscovered(QLowEnergyService::ServiceState 
         {
             for(auto it = chars.cbegin(); it != chars.cend(); ++it)
             {
-                if(!m_BLERxCharacteristicValid && it->uuid() == m_currBTArgument.RxCharacteristicUUID && it->properties().testFlag(QLowEnergyCharacteristic::Notify) && it->properties().testFlag(QLowEnergyCharacteristic::Write))
+                if(!m_BLERxCharacteristicValid && it->uuid() == m_currBTArgument.RxCharacteristicUUID && it->properties().testFlag(QLowEnergyCharacteristic::Notify))
                 {
-                    m_BLERxCharacteristicValid = true;
-                    m_BLETxCharacteristicValid = true;
-                    deleteService = false;
+                    const bool hasWriteProperty = it->properties().testFlag(QLowEnergyCharacteristic::Write);
+                    const bool hasWriteNoResponseProperty = it->properties().testFlag(QLowEnergyCharacteristic::WriteNoResponse);
+                    if(hasWriteProperty || hasWriteNoResponseProperty)
+                    {
+                        // Use WRITE if both properties are supported
+                        m_BLETxWriteMode = hasWriteProperty ? QLowEnergyService::WriteWithResponse : QLowEnergyService::WriteWithoutResponse;
+                        m_BLERxCharacteristicValid = true;
+                        m_BLETxCharacteristicValid = true;
+                        deleteService = false;
+                    }
                 }
             }
         }
@@ -1266,10 +1292,17 @@ void Connection::BLEC_onServiceDetailDiscovered(QLowEnergyService::ServiceState 
                     m_BLERxCharacteristicValid = true;
                     deleteService = false;
                 }
-                if(!m_BLETxCharacteristicValid && it->uuid() == m_currBTArgument.TxCharacteristicUUID && it->properties().testFlag(QLowEnergyCharacteristic::Write))
+                if(!m_BLETxCharacteristicValid && it->uuid() == m_currBTArgument.TxCharacteristicUUID)
                 {
-                    m_BLETxCharacteristicValid = true;
-                    deleteService = false;
+                    const bool hasWriteProperty = it->properties().testFlag(QLowEnergyCharacteristic::Write);
+                    const bool hasWriteNoResponseProperty = it->properties().testFlag(QLowEnergyCharacteristic::WriteNoResponse);
+                    if(hasWriteProperty || hasWriteNoResponseProperty)
+                    {
+                        // Use WRITE if both properties are supported
+                        m_BLETxWriteMode = hasWriteProperty ? QLowEnergyService::WriteWithResponse : QLowEnergyService::WriteWithoutResponse;
+                        m_BLETxCharacteristicValid = true;
+                        deleteService = false;
+                    }
                 }
             }
         }
@@ -1288,10 +1321,17 @@ void Connection::BLEC_onServiceDetailDiscovered(QLowEnergyService::ServiceState 
         {
             for(auto it = chars.cbegin(); it != chars.cend(); ++it)
             {
-                if(!m_BLETxCharacteristicValid && it->uuid() == m_currBTArgument.TxCharacteristicUUID && it->properties().testFlag(QLowEnergyCharacteristic::Write))
+                if(!m_BLETxCharacteristicValid && it->uuid() == m_currBTArgument.TxCharacteristicUUID)
                 {
-                    m_BLETxCharacteristicValid = true;
-                    deleteService = false;
+                    const bool hasWriteProperty = it->properties().testFlag(QLowEnergyCharacteristic::Write);
+                    const bool hasWriteNoResponseProperty = it->properties().testFlag(QLowEnergyCharacteristic::WriteNoResponse);
+                    if(hasWriteProperty || hasWriteNoResponseProperty)
+                    {
+                        // Use WRITE if both properties are supported
+                        m_BLETxWriteMode = hasWriteProperty ? QLowEnergyService::WriteWithResponse : QLowEnergyService::WriteWithoutResponse;
+                        m_BLETxCharacteristicValid = true;
+                        deleteService = false;
+                    }
                 }
             }
         }
@@ -1324,17 +1364,18 @@ void Connection::BLEC_onServiceDetailDiscovered(QLowEnergyService::ServiceState 
             if(service == m_BLERxTxService) // characteristic not found
             {
                 m_BLERxTxService = nullptr;
-                onDisconnected();
             }
             else if(service == m_BLETxService) // characteristic not found
             {
                 m_BLETxService = nullptr;
-                onDisconnected();
             }
             service->deleteLater();
             // all root services and included services are handled
             if(m_BLEDiscoveredServices.isEmpty() && m_BLEController->state() == QLowEnergyController::DiscoveredState)
-                onDisconnected();
+            {
+                qDebug() << "Cannot find Tx/Rx Characteristic matching the requirement.";
+                close();
+            }
         }
     }
 }

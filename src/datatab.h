@@ -40,6 +40,9 @@ public:
 public slots:
     void onConnTypeChanged(Connection::Type type);
     void onConnEstablished();
+    void onRecordDataChanged(bool enabled);
+    void onClearBehaviorChanged(bool clearBoth);
+    void onRxClearSignalReceived();
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void showEvent(QShowEvent *ev) override;
@@ -59,8 +62,6 @@ private slots:
     void on_receivedExportButton_clicked();
     void on_sendedExportButton_clicked();
     void on_data_suffixTypeBox_currentIndexChanged(int index);
-    void onRxSliderValueChanged(int value);
-    void onRxSliderMoved(int value);
     void on_receivedUpdateButton_clicked();
     void on_data_flowDTRBox_clicked(bool checked);
     void on_data_flowRTSBox_clicked(bool checked);
@@ -74,6 +75,7 @@ private slots:
 
     void on_receivedTimestampBox_stateChanged(int arg1);
 
+    void recordDataToBeSent();
 private:
     Ui::DataTab *ui;
 
@@ -83,8 +85,6 @@ private:
     QTimer* repeatTimer;
 
     QScrollBar* RxSlider;
-    int currRxSliderPos = 0;
-    int userRequiredRxSliderPos = 0;
 
     bool isReceivedDataHex = false;
     bool isSendedDataHex = false;
@@ -100,6 +100,8 @@ private:
     QVector<Metadata>* RxMetadata;
     QByteArray* rawSendedData = nullptr;
 
+    bool acceptClearSignal = false;
+
     void loadPreference();
     void showUpTabHelper(int tabID);
     inline QString stringWithTimestamp(const QString& str, qint64 timestamp);
@@ -108,6 +110,7 @@ private:
     static DataTab* m_currInstance;
     static void onSharedTextReceived(JNIEnv *env, jobject thiz, jstring text);
 #endif
+    void clearRxData();
 signals:
     void send(const QByteArray& data);
     void setDataCodec(QTextCodec* codec);
@@ -115,6 +118,7 @@ signals:
     void updateRxTxLen(bool updateRx, bool updateTx);
     void clearSendedData();
     void clearReceivedData();
+    void clearGraph();
     void setTxDataRecording(bool enabled);
     void showUpTab(int tabID);
 };

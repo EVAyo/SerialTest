@@ -1,7 +1,7 @@
 # SerialTest
-[![downloads](https://img.shields.io/github/downloads/wh201906/SerialTest/total?label=GitHub%E4%B8%8B%E8%BD%BD%E9%87%8F)](https://github.com/wh201906/SerialTest/releases)  
-[![downloads](https://img.shields.io/sourceforge/dt/serialtest.svg?label=SourceForge%E4%B8%8B%E8%BD%BD%E9%87%8F)](https://sourceforge.net/projects/serialtest/)  
-可在Windows/Linux/Android上运行，功能丰富的调试工具。  
+[![downloads](https://img.shields.io/github/downloads/wh201906/SerialTest/total?label=GitHub%E4%B8%8B%E8%BD%BD%E9%87%8F)](https://github.com/wh201906/SerialTest/releases)  [![downloads](https://img.shields.io/sourceforge/dt/serialtest.svg?label=SourceForge%E4%B8%8B%E8%BD%BD%E9%87%8F)](https://sourceforge.net/projects/serialtest/)  [![installs](https://img.shields.io/flathub/downloads/io.github.wh201906.serialtest?label=Flathub%E5%AE%89%E8%A3%85%E9%87%8F)](https://flathub.org/apps/io.github.wh201906.serialtest)  [![translation](https://hosted.weblate.org/widgets/serialtest/-/svg-badge.svg)](https://hosted.weblate.org/engage/serialtest/)  
+[![Windows CI(MinGW-w64)](https://github.com/wh201906/SerialTest/actions/workflows/build-windows-mingw.yml/badge.svg)](https://github.com/wh201906/SerialTest/actions/workflows/build-windows-mingw.yml)  [![Windows CI(MSVC)](https://github.com/wh201906/SerialTest/actions/workflows/build-windows-msvc.yml/badge.svg)](https://github.com/wh201906/SerialTest/actions/workflows/build-windows-msvc.yml)  [![macOS CI](https://github.com/wh201906/SerialTest/actions/workflows/build-macos.yml/badge.svg)](https://github.com/wh201906/SerialTest/actions/workflows/build-macos.yml)  
+可在Windows/Linux/macOS/Android上运行，功能丰富的调试工具。  
 支持数据收发/实时绘图/快捷方式/文件收发功能。  
 支持串口/蓝牙SPP客户端/蓝牙SPP服务器/蓝牙BLE客户端/TCP客户端/TCP服务器/UDP调试。  
 
@@ -19,8 +19,10 @@
 <details>
 <summary>跨平台</summary>
 
-+ 支持Windows/Linux/Android
-+ 理论上可支持MacOS
++ 支持Windows 7及更高版本
++ 支持[大多数Linux发行版](https://flathub.org/zh-Hans/setup)
++ 支持macOS 10.13 (High Sierra)及更高版本
++ 支持Android 5.0 (Lollipop)及更高版本
 
 </details>
 
@@ -45,6 +47,7 @@
 + 支持客户端(主机)模式/服务端(从机)模式，可主动连接设备或被设备连接
 + 服务端模式可被多个设备连接，可配置每个设备的收发状态，可断开任意设备
 + 支持多个蓝牙适配器（实验性功能）
++ 客户端：支持指定服务UUID
 
 </details>
 
@@ -92,6 +95,7 @@
 
 + 支持16进制显示, 切换过程中不改变原始数据(如\0)
 + 支持显示接收数据时间戳
++ 支持根据超时分包显示时间戳
 + 支持导出已选中文本/原始数据
 + 每次发送后可添加任意后缀(\n, \r\n, 文本，Hex数据)
 + 重复发送
@@ -175,7 +179,7 @@
 + 小屏适配：数据收发面板可仅显示已发送/已接收数据
 + 小屏适配：支持全屏模式
 + 绘图界面支持缩放/拖动手势
-+ 支持分享文本到SerialTest并发送
++ 支持分享文本或文件到SerialTest并发送
 
 </details>
 
@@ -199,8 +203,8 @@
 [demo/](https://github.com/wh201906/SerialTest/tree/master/demo)文件夹下提供了多种MCU的例程，可根据这些例程编写MCU上的程序与SerialTest交互  
 [Demo文档](../../demo/README.md)  
 
-## 在Windows和Android平台下直接使用
-[release](https://github.com/wh201906/SerialTest/releases) 页面当中包含了编译好的Windows程序和Android安装包，可直接下载。Windows平台下的程序免安装，解压后即可使用。  
+## 在Windows，Android和macOS平台下直接使用
+[release](https://github.com/wh201906/SerialTest/releases) 页面当中包含了编译好的Windows, macOS程序和Android安装包，可直接下载。Windows平台下的程序免安装，解压后即可使用。  
 
 SourceForge平台上也可下载  
 [![Download SerialTest](https://a.fsdn.com/con/app/sf-download-button)](https://sourceforge.net/projects/serialtest/files/latest/download)  
@@ -211,11 +215,16 @@ Android版本还可以在[F-Droid](https://f-droid.org/packages/priv.wh201906.se
      height="80">](https://f-droid.org/zh_Hans/packages/priv.wh201906.serialtest/)  
 
 ## 在Linux系统下编译
+
+<details>
+<summary>步骤</summary>
+
 ### 1. 安装依赖
 ```bash
+# sudo add-apt-repository universe
 sudo apt-get update
 # sudo apt-get install git build-essential
-sudo apt-get install qt5-default libqt5serialport5-dev qtconnectivity5-dev  
+sudo apt-get install qtbase5-dev qt5-qmake libqt5serialport5-dev qtconnectivity5-dev  
 ```
 ### 2. 获取项目源码
 ```bash
@@ -238,10 +247,13 @@ cp qcustomplot-source/qcustomplot.* ../src
 如果src/目录中没有qcustomplot.cpp，项目在编译时会尝试在生成文件夹和库文件的默认文件夹当中寻找QCustomPlot的库文件(xxx.so/xxx.dll)。
 ### 4. 编译并运行
 ```bash
+export QT_SELECT=qt5
 qmake ../src
 make -j4 && make clean
 ./SerialTest 
 ```
+
+</details>
 
 ## 通过 Linux 软件仓库安装
 
@@ -261,5 +273,15 @@ yay -S serialtest
 yay -S serialtest-git
 ```
 
+## 翻译
+此项目使用Weblate来管理翻译。  
+如果你想提交翻译，请访问此项目的[Weblate页面](https://hosted.weblate.org/engage/serialtest/)，或者向`weblate`分支提交PR。  
+[![翻译状态](https://hosted.weblate.org/widgets/serialtest/-/multi-auto.svg)](https://hosted.weblate.org/engage/serialtest/)  
+
 ## 更新日志
 [更新日志](../CHANGELOG/CHANGELOG_zh_CN.md)
+
+## 许可证
+`src/qcustomplot.h` 和位于 `src/qdarkstyle/` 下的文件使用各自对应项目的许可证。  
+位于 `src/` 下的源代码使用[GPL 3.0](../../LICENSE.GPL)许可证。  
+位于 `demo/` 下的源代码（不包含依赖库），本项目的所有翻译，文档，以及该项目的其它部分均使用[MIT](../../LICENSE.MIT)许可证。

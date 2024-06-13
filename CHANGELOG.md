@@ -2,6 +2,35 @@
 
 [中文](doc/CHANGELOG/CHANGELOG_zh_CN.md)  
 
+## V0.3.5
++ Improve BLE compatibility by adding support for WriteNoResponse operation (commit 0e5c82ea6c)
++ Improve serial port compatibility by allowing non-fatal errors when setting DTR/RTS in the connecting process (commit cae854bcdd)
++ Add Windows MSVC support for Bluetooth (commit 9760cccda8)
++ Add support for restoring dock widgets status (commit c88b47e1b0)
++ Add an option for enabling/disabling touch scrolling gesture (commit fda6389c31)
++ Replace "√"(U+221A) with "OK" in the status bar for the visual consistency across all platforms (commit 574360343e)
++ DataTab: Keep selection unchanged when appending received data (commit 86508ff76b)
++ Fix a few bugs
+
+## V0.3.4
++ Android: Use adaptive launcher icon (commit da9f2caaf1)
+
+## V0.3.3
++ Add support for specifying service UUID in Bluetooth client mode (commit 1bd23bf4e0)
++ Add support for showing IPv6 addresses on Android (commit 03a0e7938c)
++ Add option for remembering the data to be sent in DataTab (commit 00eb0e2e36)
++ Add option for clearing both received data and graph at the same time (commit a4779028d2)
++ Improve the permission request process on Android
++ Add point-only mode for plotting (commit daf34607c9)
++ Fix the missing separator when appending hex data with timestamp (commit 00eb0e2e36)
+
+## V0.3.2
++ Fix 2 bugs in the Control Panel  
++ Fix a bug in the timestamp (commit c73e12c30ad)  
++ Add support for changing the theme without restarting the app  
++ Add the ability to merge timestamps with short interval (split packets based on timeout)  
++ Android: Add support for sharing a file to SerialTest then send it (requires Qt 5.15.10 or a higher version)  
+
 ## V0.3.1
 + Fix a build error (commit 9e9cdc1837)
 

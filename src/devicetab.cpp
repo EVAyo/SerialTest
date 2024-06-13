@@ -13,10 +13,14 @@
 #include <QtAndroid>
 #include <QAndroidJniEnvironment>
 #endif
+#ifdef _MSC_VER
+#include <winrtbluetooth.h>
+#endif
 
 const QMap<QString, QString> DeviceTab::m_historyPrefix =
 {
     {QLatin1String("SP"), QLatin1String("SerialTest_History_SerialPort")},
+    {QLatin1String("BTClient"), QLatin1String("SerialTest_History_BT_Client")},
     {QLatin1String("BTServer"), QLatin1String("SerialTest_History_BT_Server")},
     {QLatin1String("BLEC"), QLatin1String("SerialTest_History_BLE_Central")},
     {QLatin1String("TCPServer"), QLatin1String("SerialTest_History_TCP_Server")},
@@ -130,8 +134,14 @@ void DeviceTab::initSettings()
         loadSPPreference(m_SPArgHistory.last());
 
     // TCP client preference(last connected) is loaded in on_typeBox_currentIndexChanged()
+    // because TCP client/TCP server/UDP share the same widgets
 
     // non-arrays
+    settings->beginGroup(m_historyPrefix["BTClient"]);
+    ui->BTClient_serviceUUIDBox->setChecked(settings->value("UserSpecifiedServiceUUID", false).toBool());
+    ui->BTClient_serviceUUIDEdit->setText(settings->value("ServiceUUID").toString());
+    settings->endGroup();
+    on_BTClient_serviceUUIDBox_clicked();
     settings->beginGroup(m_historyPrefix["BTServer"]);
     ui->BTServer_serviceNameEdit->setText(settings->value("LastServiceName", "SerialTest_BT").toString());
     settings->endGroup();
@@ -212,28 +222,54 @@ void DeviceTab::refreshTargetList()
 }
 
 #ifdef Q_OS_ANDROID
+bool DeviceTab::getPermission(const QString& permission)
+{
+    QtAndroid::PermissionResult result = QtAndroid::checkPermission(permission);
+    if(result == QtAndroid::PermissionResult::Denied)
+    {
+        QtAndroid::requestPermissionsSync(QStringList() << permission);
+        result = QtAndroid::checkPermission(permission);
+        if(result == QtAndroid::PermissionResult::Denied)
+            return false;
+    }
+    return true;
+}
+
+void DeviceTab::getRequiredPermission()
+{
+    QStringList permissionList =
+    {
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.BLUETOOTH_ADMIN"
+    };
+    if(QtAndroid::androidSdkVersion() >= 31)
+    {
+        permissionList += "android.permission.BLUETOOTH_SCAN";
+        permissionList += "android.permission.BLUETOOTH_CONNECT";
+    }
+    else
+    {
+        permissionList += "android.permission.BLUETOOTH";
+    }
+    for(const QString& permission : permissionList)
+    {
+        if(!getPermission(permission))
+            qDebug() << "Failed to request permission" << permission;
+    }
+}
+
 void DeviceTab::getBondedTarget(bool isBLE)
 {
-    QAndroidJniEnvironment env;
-    QtAndroid::PermissionResult r = QtAndroid::checkPermission("android.permission.ACCESS_FINE_LOCATION");
-    if(r == QtAndroid::PermissionResult::Denied)
-    {
-        QtAndroid::requestPermissionsSync(QStringList() << "android.permission.ACCESS_FINE_LOCATION");
-        r = QtAndroid::checkPermission("android.permission.ACCESS_FINE_LOCATION");
-        if(r == QtAndroid::PermissionResult::Denied)
-        {
-            qDebug() << "failed to request";
-        }
-    }
-    qDebug() << "has permission";
+    QAndroidJniEnvironment androidEnv;
+    getRequiredPermission();
     QAndroidJniObject array = QtAndroid::androidActivity().callObjectMethod("getBondedDevices", "(Z)[Ljava/lang/String;", isBLE);
-    int arraylen = env->GetArrayLength(array.object<jarray>());
-    qDebug() << "arraylen:" << arraylen;
+    int arrayLen = androidEnv->GetArrayLength(array.object<jarray>());
+    qDebug() << "arrayLen:" << arrayLen;
     QTableWidget* deviceList = isBLE ? ui->BLEC_deviceList : ui->BTClient_deviceList;
-    deviceList->setRowCount(arraylen);
-    for(int i = 0; i < arraylen; i++)
+    deviceList->setRowCount(arrayLen);
+    for(int i = 0; i < arrayLen; i++)
     {
-        QString info = QAndroidJniObject::fromLocalRef(env->GetObjectArrayElement(array.object<jobjectArray>(), i)).toString();
+        QString info = QAndroidJniObject::fromLocalRef(androidEnv->GetObjectArrayElement(array.object<jobjectArray>(), i)).toString();
         QString address = info.left(info.indexOf(' '));
         QString name = info.right(info.length() - info.indexOf(' ') - 1);
         qDebug() << address << name;
@@ -286,15 +322,6 @@ void DeviceTab::initUI()
 
     ui->Net_localPortEdit->setValidator(m_netPortValidator);
     ui->Net_remotePortEdit->setValidator(m_netPortValidator);
-
-    QScroller::grabGesture(ui->BLEC_argsScrollArea);
-    QScroller::grabGesture(ui->Net_argsScrollArea);
-    QScroller::grabGesture(ui->SP_portList);
-    QScroller::grabGesture(ui->BTServer_deviceList);
-    QScroller::grabGesture(ui->BTClient_deviceList);
-    QScroller::grabGesture(ui->BLEC_deviceList);
-    QScroller::grabGesture(ui->BLEC_UUIDList);
-    QScroller::grabGesture(ui->Net_addrPortList);
 }
 
 void DeviceTab::getAvailableTypes(bool useFirstValid)
@@ -380,6 +407,8 @@ void DeviceTab::getAvailableTypes(bool useFirstValid)
 
 qint64 DeviceTab::updateBTAdapterList()
 {
+    // Apps can only get a dummy MAC address 02:00:00:00:00:00 since Android 6.0
+    // https://developer.android.com/about/versions/marshmallow/android-6.0-changes#behavior-hardware-id
     qint64 adapterID = 0;
 
     ui->BTClient_adapterBox->clear();
@@ -387,30 +416,39 @@ qint64 DeviceTab::updateBTAdapterList()
     ui->BLEC_adapterBox->clear();
 #ifdef Q_OS_ANDROID
     // need modify
-    if(QtAndroid::checkPermission("android.permission.BLUETOOTH_CONNECT") == QtAndroid::PermissionResult::Denied)
-        QtAndroid::requestPermissionsSync({"android.permission.BLUETOOTH_CONNECT"}, 10000);
+    getRequiredPermission();
 #endif
+#ifdef _MSC_VER
+    // Only powered on adapters
+    auto BTAdapterList = WinRTBluetooth::allLocalDevices(true);
+#else
+    // All adapters
     auto BTAdapterList = QBluetoothLocalDevice::allDevices();
+#endif
     for(auto it = BTAdapterList.cbegin(); it != BTAdapterList.cend(); ++it)
     {
         qDebug() << "dev:" << it->name() << it->address();
+#ifndef _MSC_VER
         QBluetoothLocalDevice dev(it->address());
-        if(dev.isValid() && dev.hostMode() != QBluetoothLocalDevice::HostPoweredOff)
+        if(!dev.isValid() || dev.hostMode() == QBluetoothLocalDevice::HostPoweredOff)
         {
-            QString name = QString("%1:%2").arg(adapterID + 1).arg(it->name());
-            ui->BTClient_adapterBox->addItem(name, it->address().toString());
-            ui->BTServer_adapterBox->addItem(name, it->address().toString());
-            ui->BLEC_adapterBox->addItem(name, it->address().toString());
-            adapterID++;
+            continue;
         }
+#endif
+        QString name = QString("%1:%2").arg(adapterID + 1).arg(it->name());
+        ui->BTClient_adapterBox->addItem(name, it->address().toString());
+        ui->BTServer_adapterBox->addItem(name, it->address().toString());
+        ui->BLEC_adapterBox->addItem(name, it->address().toString());
+        adapterID++;
     }
-    return adapterID;
+    return adapterID; // adapter count
 }
 
 qint64 DeviceTab::updateNetInterfaceList()
 {
     Connection::Type currType = ui->typeBox->currentData().value<Connection::Type>();
     QHostAddress currNetLocalAddr;
+    QList<QHostAddress> shownAddresses;
 
     if(currType == Connection::UDP)
     {
@@ -425,7 +463,27 @@ qint64 DeviceTab::updateNetInterfaceList()
         ui->Net_localAddrBox->addItem(m_anyLocalAddress);
     auto netInterfaceList = QNetworkInterface::allAddresses();
     for(auto it = netInterfaceList.cbegin(); it != netInterfaceList.cend(); ++it)
-        ui->Net_localAddrBox->addItem((*it).toString());
+    {
+        shownAddresses.append(*it);
+        ui->Net_localAddrBox->addItem(it->toString());
+    }
+#ifdef Q_OS_ANDROID
+    QAndroidJniEnvironment androidEnv;
+    QAndroidJniObject array = QtAndroid::androidActivity().callObjectMethod("getIPv6Addresses", "()[Ljava/lang/String;");
+    int arrayLen = androidEnv->GetArrayLength(array.object<jarray>());
+    qDebug() << "arraylen:" << arrayLen;
+    for(int i = 0; i < arrayLen; i++)
+    {
+        QString addressStr = QAndroidJniObject::fromLocalRef(androidEnv->GetObjectArrayElement(array.object<jobjectArray>(), i)).toString();
+        QHostAddress address(addressStr);
+        // QHostAddress has operator==(), so QList::contains() works
+        if(!shownAddresses.contains(address))
+        {
+            shownAddresses.append(address);
+            ui->Net_localAddrBox->addItem(addressStr);
+        }
+    }
+#endif
 
     if(currType == Connection::UDP && currNetLocalAddr.isMulticast())
         ui->Net_localAddrBox->setCurrentText(currNetLocalAddr.toString());
@@ -617,8 +675,25 @@ void DeviceTab::on_openButton_clicked()
         Connection::BTArgument arg;
         arg.localAdapterAddress = QBluetoothAddress(ui->BTClient_adapterBox->currentData().toString());
         arg.deviceAddress = QBluetoothAddress(ui->BTClient_targetAddrBox->currentText());
+        if(ui->BTClient_serviceUUIDBox->isChecked() && !ui->BTClient_serviceUUIDEdit->text().isEmpty())
+            arg.RxServiceUUID = String2UUID(ui->BTClient_serviceUUIDEdit->text());
+        else
+            arg.RxServiceUUID = QBluetoothUuid::SerialPort;
         m_connection->setArgument(arg);
         m_connection->open();
+
+        settings->beginGroup(m_historyPrefix["BTClient"]);
+        if(arg.RxServiceUUID == QBluetoothUuid::SerialPort)
+        {
+            settings->setValue("UserSpecifiedServiceUUID", false);
+        }
+        else
+        {
+            // Update "ServiceUUID" only if the service UUID is not SerialPort
+            settings->setValue("UserSpecifiedServiceUUID", ui->BTClient_serviceUUIDBox->isChecked());
+            settings->setValue("ServiceUUID", arg.RxServiceUUID);
+        }
+        settings->endGroup();
     }
     else if(currType == Connection::BT_Server)
     {
@@ -1210,9 +1285,13 @@ void DeviceTab::on_refreshButton_clicked()
 
 void DeviceTab::on_BTClient_adapterBox_activated(int index)
 {
+    // This function is actually useless.
+    // According to the source code of Qt Connectivity (v5.9.0, v5.15.2 and v6.7.0),
+    // the constructor of QBluetoothDeviceDiscoveryAgent only checks if the adapter address exists
+    // in QBluetoothLocalDevice::allDevices(). It ignores null address and won't specify which adapter to be used.
     Q_UNUSED(index)
     ui->BTClient_localAddrLabel->setText(ui->BTClient_adapterBox->currentData().toString());
-    setBTClientDiscoveryAgent(QBluetoothAddress(ui->BTClient_adapterBox->currentData().toString()));
+    setBTClientDiscoveryAgent(QBluetoothAddress());
 #ifdef Q_OS_ANDROID
     // invalid MAC address, ignore
     ui->BTClient_localAddrLabel->setHidden(ui->BTClient_localAddrLabel->text() == "02:00:00:00:00:00");
@@ -1639,4 +1718,40 @@ quint8 DeviceTab::SP_ID::matches(const SP_ID &id) const
 DeviceTab::SP_ID::operator bool() const
 {
     return (m_vid != 0 || m_pid != 0 || !m_serialNumber.isEmpty());
+}
+
+void DeviceTab::on_BTClient_serviceUUIDBox_clicked()
+{
+    bool userSpecifiedUUID = ui->BTClient_serviceUUIDBox->isChecked();
+    ui->BTClient_serviceUUIDEdit->setVisible(userSpecifiedUUID);
+    ui->BTClient_tipLabel->setVisible(!userSpecifiedUUID);
+}
+
+void DeviceTab::setTouchScroll(bool enabled)
+{
+    if(enabled)
+    {
+
+        QScroller::grabGesture(ui->BLEC_argsScrollArea);
+        QScroller::grabGesture(ui->Net_argsScrollArea);
+        QScroller::grabGesture(ui->SP_portList);
+        QScroller::grabGesture(ui->BTServer_deviceList);
+        QScroller::grabGesture(ui->BTClient_deviceList);
+        QScroller::grabGesture(ui->BLEC_deviceList);
+        QScroller::grabGesture(ui->BLEC_UUIDList);
+        QScroller::grabGesture(ui->Net_addrPortList);
+    }
+    else
+    {
+
+        QScroller::ungrabGesture(ui->BLEC_argsScrollArea);
+        QScroller::ungrabGesture(ui->Net_argsScrollArea);
+        QScroller::ungrabGesture(ui->SP_portList);
+        QScroller::ungrabGesture(ui->BTServer_deviceList);
+        QScroller::ungrabGesture(ui->BTClient_deviceList);
+        QScroller::ungrabGesture(ui->BLEC_deviceList);
+        QScroller::ungrabGesture(ui->BLEC_UUIDList);
+        QScroller::ungrabGesture(ui->Net_addrPortList);
+
+    }
 }

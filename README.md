@@ -1,7 +1,7 @@
 # SerialTest
-[![downloads](https://img.shields.io/github/downloads/wh201906/SerialTest/total?label=GitHub%20release%20downloads)](https://github.com/wh201906/SerialTest/releases)  
-[![downloads](https://img.shields.io/sourceforge/dt/serialtest.svg?label=SourceForge%20downloads)](https://sourceforge.net/projects/serialtest/)  
-A versatile test tool running on Windows/Linux/Android.  
+[![downloads](https://img.shields.io/github/downloads/wh201906/SerialTest/total?label=GitHub%20release%20downloads)](https://github.com/wh201906/SerialTest/releases)  [![downloads](https://img.shields.io/sourceforge/dt/serialtest.svg?label=SourceForge%20downloads)](https://sourceforge.net/projects/serialtest/)  [![installs](https://img.shields.io/flathub/downloads/io.github.wh201906.serialtest?label=Flathub%20installs)](https://flathub.org/apps/io.github.wh201906.serialtest)  [![translation](https://hosted.weblate.org/widgets/serialtest/-/svg-badge.svg)](https://hosted.weblate.org/engage/serialtest/)  
+[![Windows CI(MinGW-w64)](https://github.com/wh201906/SerialTest/actions/workflows/build-windows-mingw.yml/badge.svg)](https://github.com/wh201906/SerialTest/actions/workflows/build-windows-mingw.yml)  [![Windows CI(MSVC)](https://github.com/wh201906/SerialTest/actions/workflows/build-windows-msvc.yml/badge.svg)](https://github.com/wh201906/SerialTest/actions/workflows/build-windows-msvc.yml)  [![macOS CI](https://github.com/wh201906/SerialTest/actions/workflows/build-macos.yml/badge.svg)](https://github.com/wh201906/SerialTest/actions/workflows/build-macos.yml)  
+A versatile test tool running on Windows/Linux/macOS/Android.  
 Works as data transceiver/realtime plotter/shortcut/file transceiver.  
 Supports serial port, Bluetooth SPP client/server, Bluetooth LE client, TCP client/server, UDP.  
 
@@ -18,8 +18,10 @@ Supports serial port, Bluetooth SPP client/server, Bluetooth LE client, TCP clie
 <details>
 <summary>Cross-platform</summary>
 
-+ Runs on Windows/Linux/Android
-+ Maybe supports MacOS?
++ Supports Windows 7 and later
++ Supports [most Linux distros](https://flathub.org/setup)
++ Supports macOS 10.13 (High Sierra) and later
++ Supports Android 5.0 (Lollipop) and later
 
 </details>
 
@@ -44,6 +46,7 @@ Supports serial port, Bluetooth SPP client/server, Bluetooth LE client, TCP clie
 + Supports client mode and server mode
 + The server can be connected by multiple devices. You can enable/disable the Tx/Rx function of them.
 + Supports multiple local Bluetooth adapters (Experimental)
++ Client: Supports specifying service UUID
 
 </details>
 
@@ -91,6 +94,7 @@ Supports serial port, Bluetooth SPP client/server, Bluetooth LE client, TCP clie
 
 + Show data in hexadecimal
 + Show timestamp of received data
++ Show packets split by timeout with timestamp
 + Export raw data or selected text
 + Add suffix behind each sending(\r, \r\n, string, hex data)
 + Repeat
@@ -120,7 +124,7 @@ Supports serial port, Bluetooth SPP client/server, Bluetooth LE client, TCP clie
 </details>
 
 <details>
-<summary>Controll(shortcut) panel</summary>
+<summary>Control(shortcut) panel</summary>
 
 + Send spedified data by one click
 + Send a number quickly by slider
@@ -175,7 +179,7 @@ Supports serial port, Bluetooth SPP client/server, Bluetooth LE client, TCP clie
 + Small screen support: Show sended/received data only
 + Small screen support: Full screen mode
 + Drag/Scale gesture support on Plotter
-+ Share text to SerialTest then send it
++ Share text/file to SerialTest then send it
 
 </details>
 
@@ -199,7 +203,7 @@ Supports serial port, Bluetooth SPP client/server, Bluetooth LE client, TCP clie
 You can write programs on MCU according to the demos in the [demo/](https://github.com/wh201906/SerialTest/tree/master/demo) folder  
 [Demo README](demo/README.md)  
 
-## Binaries for Windows and Android
+## Binaries for Windows, Android and macOS
 You can download pre-built binaries and Android APK in [release](https://github.com/wh201906/SerialTest/releases) page.  
 
 You can also download them in SourceForge  
@@ -211,11 +215,16 @@ The Android app is available on [F-Droid](https://f-droid.org/packages/priv.wh20
      height="80">](https://f-droid.org/packages/priv.wh201906.serialtest/)  
 
 ## Build on Linux
+
+<details>
+<summary>Steps</summary>
+
 ### 1. Install depencencies
 ```bash
+# sudo add-apt-repository universe
 sudo apt-get update
 # sudo apt-get install git build-essential
-sudo apt-get install qt5-default libqt5serialport5-dev qtconnectivity5-dev 
+sudo apt-get install qtbase5-dev qt5-qmake libqt5serialport5-dev qtconnectivity5-dev 
 ```
 ### 2. Get the source code
 ```bash
@@ -238,10 +247,13 @@ cp qcustomplot-source/qcustomplot.* ../src
 If the qcustomplot.cpp doesn't exist in the src/ folder, the qmake will try to find the library file(xxx.so/xxx.dll) in the building directory(where you call the qmake command) and the default library directory.  
 ### 4. Build and run
 ```bash
+export QT_SELECT=qt5
 qmake ../src
 make -j4 && make clean
 ./SerialTest 
 ```
+
+</details>
 
 ## Install from the Linux software repository
 
@@ -261,5 +273,15 @@ yay -S serialtest
 yay -S serialtest-git
 ```
 
+## Translation
+The project uses Weblate to manage translation.  
+If you'd like to help with the translation, please visit the [Weblate translation page](https://hosted.weblate.org/engage/serialtest/) or create a PR to the `weblate` branch.  
+[![Translation status](https://hosted.weblate.org/widgets/serialtest/-/multi-auto.svg)](https://hosted.weblate.org/engage/serialtest/)  
+
 ## Change Log
 [Change Log](CHANGELOG.md)
+
+## License
+The `src/qcustomplot.h` and the files in `src/qdarkstyle/` are licensed under the same licenses as their respective projects.  
+The source code in `src/` is licensed under [GPL 3.0](LICENSE.GPL).  
+The source code in `demo/`(excluding dependencies), translations, documents and other parts of this project are licensed under [MIT](LICENSE.MIT).  

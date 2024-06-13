@@ -27,7 +27,11 @@ public:
 public slots:
     void newData(const QByteArray &data);
     void setDecoder(QTextDecoder* decoder);
+    void onThemeChanged(const QString& themeName);
+    void onClearBehaviorChanged(bool clearBoth);
+    void onClearSignalReceived();
 signals:
+    void clearRxData();
 
 private slots:
     void onQCPLegendDoubleClick(QCPLegend *legend, QCPAbstractLegendItem *item, QMouseEvent* event);
@@ -47,7 +51,7 @@ private slots:
     void on_plot_advancedBox_stateChanged(int arg1);
     void on_plot_frameSpTypeBox_currentIndexChanged(int index);
     void on_plot_dataSpTypeBox_currentIndexChanged(int index);
-    void on_plot_scatterBox_stateChanged(int arg1);
+    void on_plot_plotStyleBox_currentIndexChanged(int index);
     void on_plot_frameSpEdit_editingFinished();
     void on_plot_dataSpEdit_editingFinished();
     void on_plot_clearFlagTypeBox_currentIndexChanged(int index);
@@ -56,6 +60,7 @@ private slots:
     void savePlotPreference();
     void loadPreference();
     void processData();
+
 private:
     Ui::PlotTab *ui;
 
@@ -82,12 +87,15 @@ private:
     QTimer* m_dataProcessTimer;
     std::default_random_engine* m_randEngine;
 
+    bool acceptClearSignal = false;
+
     void updateTracer(double x);
     QCPAbstractLegendItem *getLegendItemByPos(const QPointF &pos);
     void setGraphProperty(QCPAbstractLegendItem *item);
     inline double toDouble(const QString& str); // find valid value then convert
     void saveGraphProperty();
     void changeGraphNum(int newNum);
+    void clearGraph();
 };
 
 #endif // PLOTTAB_H

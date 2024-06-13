@@ -56,12 +56,16 @@ public slots:
     void showUpTab(int tabID);
     void setFullScreen(bool isFullScreen);
     void onOpacityChanged(qreal value);
+    void onThemeChanged(const QString& themeName);
     void onDockTopLevelChanged(bool topLevel); // for opacity
+    void onMergeTimestampChanged(bool enabled);
+    void onTimestampIntervalChanged(int interval);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
     void keyReleaseEvent(QKeyEvent* e) override;
+    void closeEvent(QCloseEvent* event) override;
 private slots:
     void readData();
     void onStateButtonClicked();
@@ -102,6 +106,9 @@ private:
     QByteArray RxUIBuf;
     QVector<Metadata> RxUIMetadataBuf;
 
+    bool m_mergeTimestamp = true;
+    int m_timestampInterval = 10;
+
     QTimer* updateUITimer;
 
     MySettings* settings;
@@ -112,6 +119,8 @@ private:
     FileTab* fileTab;
     SettingsTab* settingsTab;
     QList<QDockWidget*> dockList;
+
+    QString m_appDefaultQss;
 
 #ifndef Q_OS_ANDROID
     QCheckBox* onTopBox;
